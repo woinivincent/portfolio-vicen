@@ -103,7 +103,7 @@ export default async function Home() {
           <div className="proj-grid">
             {projects.map((p) => (
               <article className="card" key={p.id}>
-                <ProjectThumb id={p.id} titulo={p.titulo} />
+                <ProjectThumb id={p.id} titulo={p.titulo} version={p.imageVersion} />
                 <div className="card-body">
                   <div className="card-top">
                     <div>

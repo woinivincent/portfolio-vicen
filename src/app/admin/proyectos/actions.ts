@@ -7,6 +7,7 @@ import {
   deleteProject,
   getProject,
   moveProject,
+  setProjectImage,
   updateProject,
   type ProjectStatus,
 } from "@/lib/db";
@@ -84,6 +85,7 @@ export async function uploadProjectImageAction(formData: FormData) {
   const file = formData.get("image") as File;
   try {
     await saveImage(id, file);
+    await setProjectImage(id, Date.now());
   } catch (e) {
     redirect(`/admin/proyectos/${id}?error=${errParam(e)}`);
   }
@@ -95,6 +97,7 @@ export async function deleteProjectImageAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   try {
     await deleteImage(id);
+    await setProjectImage(id, 0);
   } catch (e) {
     redirect(`/admin/proyectos/${id}?error=${errParam(e)}`);
   }

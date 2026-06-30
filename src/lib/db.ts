@@ -29,6 +29,8 @@ export interface Project {
   stack: string[];
   linkUrl: string;
   linkLabel: string;
+  // Versión de la imagen para cache-busting: cambia al subir, 0 = sin imagen.
+  imageVersion: number;
 }
 
 export interface ContentData {
@@ -79,6 +81,7 @@ function normalizeProject(p: Partial<Project>): Project {
     stack: Array.isArray(p.stack) ? p.stack.map(String) : [],
     linkUrl: String(p.linkUrl ?? ""),
     linkLabel: String(p.linkLabel ?? ""),
+    imageVersion: typeof p.imageVersion === "number" ? p.imageVersion : 0,
   };
 }
 
@@ -118,27 +121,39 @@ export async function getProject(id: string): Promise<Project | undefined> {
   return projects.find((p) => p.id === id);
 }
 
+// Los campos editables desde el formulario (todo menos id y la versión de imagen,
+// que se gestiona aparte al subir/borrar la captura).
+export type ProjectInput = Omit<Project, "id" | "imageVersion">;
+
 export async function createProject(
-  data: Omit<Project, "id"> & { id: string }
+  data: ProjectInput & { id: string }
 ): Promise<string> {
   const dataDoc = await loadData();
   const id = data.id;
   if (dataDoc.projects.some((p) => p.id === id)) {
     throw new Error("Ya existe un proyecto con ese identificador");
   }
-  dataDoc.projects.push(normalizeProject({ ...data, id }));
+  dataDoc.projects.push(normalizeProject({ ...data, id, imageVersion: 0 }));
   await writeRaw(dataDoc);
   return id;
 }
 
-export async function updateProject(
-  id: string,
-  data: Omit<Project, "id">
-): Promise<void> {
+export async function updateProject(id: string, data: ProjectInput): Promise<void> {
   const dataDoc = await loadData();
   const idx = dataDoc.projects.findIndex((p) => p.id === id);
   if (idx === -1) throw new Error("Proyecto no encontrado");
-  dataDoc.projects[idx] = normalizeProject({ ...data, id });
+  // Preservamos la versión de imagen existente (el form no la maneja).
+  const imageVersion = dataDoc.projects[idx].imageVersion;
+  dataDoc.projects[idx] = normalizeProject({ ...data, id, imageVersion });
+  await writeRaw(dataDoc);
+}
+
+// Marca/limpia la imagen de un proyecto. version = Date.now() al subir, 0 al borrar.
+export async function setProjectImage(id: string, version: number): Promise<void> {
+  const dataDoc = await loadData();
+  const idx = dataDoc.projects.findIndex((p) => p.id === id);
+  if (idx === -1) return;
+  dataDoc.projects[idx].imageVersion = version;
   await writeRaw(dataDoc);
 }
 
@@ -179,7 +194,7 @@ export async function setConfigValues(data: Record<string, string>): Promise<voi
 
 // ─── Seed data (contenido inicial = portfolio estático original) ────────────────
 
-const SEED_PROJECTS: Project[] = [
+const SEED_PROJECTS: (ProjectInput & { id: string })[] = [
   {
     id: "flandes",
     titulo: "Campo Escuela Flandes",

@@ -180,8 +180,18 @@ export default async function ProyectoEditor({
             Proporción 16:10 (ej. 1280×800 px), formato JPG/PNG/WebP, hasta 10 MB. La imagen se
             alinea al borde superior.
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="img-preview" src={`/images/${project.id}.jpg`} alt="Captura actual" />
+          {project.imageVersion > 0 ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              className="img-preview"
+              src={`/images/${project.id}.jpg?v=${project.imageVersion}`}
+              alt="Captura actual"
+            />
+          ) : (
+            <div className="img-preview" style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: ".85rem" }}>
+              Sin imagen
+            </div>
+          )}
           <form
             action={uploadProjectImageAction}
             encType="multipart/form-data"

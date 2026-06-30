@@ -46,8 +46,12 @@ export default async function ProyectosPage({
 
       {projects.map((p, i) => (
         <div className="proj-row" key={p.id}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="proj-thumb" src={`/images/${p.id}.jpg`} alt="" />
+          {p.imageVersion > 0 ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="proj-thumb" src={`/images/${p.id}.jpg?v=${p.imageVersion}`} alt="" />
+          ) : (
+            <span className="proj-thumb" aria-hidden />
+          )}
           <div className="meta">
             <strong>{p.titulo}</strong>
             <span>
