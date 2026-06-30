@@ -15,6 +15,10 @@ const ERR_MSG: Record<string, string> = {
   titulo: "El título es obligatorio.",
   duplicado: "Ya existe un proyecto con ese identificador (slug). Usá otro.",
 };
+
+function showError(code: string): string {
+  return ERR_MSG[code] ?? decodeURIComponent(code);
+}
 const OK_MSG: Record<string, string> = {
   img: "Imagen actualizada.",
   imgdel: "Imagen eliminada.",
@@ -55,7 +59,7 @@ export default async function ProyectoEditor({
           : "Modificá el contenido de la tarjeta."}
       </p>
 
-      {error && <div className="flash flash-err">{ERR_MSG[error] ?? "Ocurrió un error."}</div>}
+      {error && <div className="flash flash-err">{showError(error)}</div>}
       {ok && <div className="flash flash-ok">{OK_MSG[ok] ?? "Listo."}</div>}
 
       <form action={saveProjectAction} className="panel">

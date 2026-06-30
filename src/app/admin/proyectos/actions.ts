@@ -31,6 +31,10 @@ function slugify(s: string): string {
 
 const STATUSES: ProjectStatus[] = ["live", "prod", "done"];
 
+function errParam(e: unknown): string {
+  return encodeURIComponent(String(e instanceof Error ? e.message : e).slice(0, 300));
+}
+
 export async function saveProjectAction(formData: FormData) {
   const mode = String(formData.get("mode") ?? "create");
   const rawStatus = String(formData.get("status") ?? "done") as ProjectStatus;
@@ -53,12 +57,20 @@ export async function saveProjectAction(formData: FormData) {
   if (mode === "edit") {
     const id = String(formData.get("id") ?? "");
     if (!(await getProject(id))) redirect("/admin/proyectos?error=notfound");
-    await updateProject(id, data);
+    try {
+      await updateProject(id, data);
+    } catch (e) {
+      redirect(`/admin/proyectos/${id}?error=${errParam(e)}`);
+    }
   } else {
     const requested = String(formData.get("id") ?? "").trim();
     const id = slugify(requested || data.titulo) || `proj-${Date.now()}`;
     if (await getProject(id)) redirect(`/admin/proyectos/nuevo?error=duplicado`);
-    await createProject({ ...data, id });
+    try {
+      await createProject({ ...data, id });
+    } catch (e) {
+      redirect(`/admin/proyectos/nuevo?error=${errParam(e)}`);
+    }
   }
 
   revalidatePath("/");
@@ -70,22 +82,34 @@ export async function uploadProjectImageAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!(await getProject(id))) redirect("/admin/proyectos?error=notfound");
   const file = formData.get("image") as File;
-  await saveImage(id, file);
+  try {
+    await saveImage(id, file);
+  } catch (e) {
+    redirect(`/admin/proyectos/${id}?error=${errParam(e)}`);
+  }
   revalidatePath("/");
   redirect(`/admin/proyectos/${id}?ok=img`);
 }
 
 export async function deleteProjectImageAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  await deleteImage(id);
+  try {
+    await deleteImage(id);
+  } catch (e) {
+    redirect(`/admin/proyectos/${id}?error=${errParam(e)}`);
+  }
   revalidatePath("/");
   redirect(`/admin/proyectos/${id}?ok=imgdel`);
 }
 
 export async function deleteProjectAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  await deleteProject(id);
-  await deleteImage(id);
+  try {
+    await deleteProject(id);
+    await deleteImage(id);
+  } catch (e) {
+    redirect(`/admin/proyectos?error=${errParam(e)}`);
+  }
   revalidatePath("/");
   revalidatePath("/admin/proyectos");
   redirect("/admin/proyectos?ok=del");
@@ -94,7 +118,11 @@ export async function deleteProjectAction(formData: FormData) {
 export async function moveProjectAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const dir = String(formData.get("dir") ?? "up") as "up" | "down";
-  await moveProject(id, dir);
+  try {
+    await moveProject(id, dir);
+  } catch (e) {
+    redirect(`/admin/proyectos?error=${errParam(e)}`);
+  }
   revalidatePath("/");
   redirect("/admin/proyectos");
 }

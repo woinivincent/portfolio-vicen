@@ -11,6 +11,14 @@ const OK_MSG: Record<string, string> = {
   del: "Proyecto eliminado.",
 };
 
+const ERR_MSG: Record<string, string> = {
+  notfound: "El proyecto no existe.",
+};
+
+function showError(code: string): string {
+  return ERR_MSG[code] ?? decodeURIComponent(code);
+}
+
 export default async function ProyectosPage({
   searchParams,
 }: {
@@ -28,7 +36,7 @@ export default async function ProyectosPage({
       </p>
 
       {ok && <div className="flash flash-ok">{OK_MSG[ok] ?? "Listo."}</div>}
-      {error && <div className="flash flash-err">Ocurrió un error ({error}).</div>}
+      {error && <div className="flash flash-err">{showError(error)}</div>}
 
       <div style={{ marginBottom: 20 }}>
         <Link href="/admin/proyectos/nuevo" className="btn btn-primary btn-sm">

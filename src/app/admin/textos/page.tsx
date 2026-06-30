@@ -16,11 +16,11 @@ function parseJSON<T>(s: string | undefined, fallback: T): T {
 export default async function TextosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
   await requireAuth();
   const c = await getAllConfig();
-  const { ok } = await searchParams;
+  const { ok, error } = await searchParams;
 
   const chips = parseJSON<string[]>(c["hero.chips"], []);
   const cells = parseJSON<{ title: string; text: string }[]>(c["approach.cells"], []);
@@ -53,6 +53,11 @@ export default async function TextosPage({
       <h1 className="admin-h1">Textos del sitio</h1>
       <p className="admin-sub">Todo lo que aparece en la página, editable desde acá.</p>
       {ok && <div className="flash flash-ok">Cambios guardados.</div>}
+      {error && (
+        <div className="flash flash-err">
+          No se pudieron guardar los cambios: {decodeURIComponent(error)}
+        </div>
+      )}
 
       <form action={saveTextsAction}>
         <input type="hidden" name="cellCount" value={cells.length} />

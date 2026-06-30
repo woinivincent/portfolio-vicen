@@ -73,7 +73,12 @@ export async function saveTextsAction(formData: FormData) {
   }
   data["stack.groups"] = JSON.stringify(groups);
 
-  await setConfigValues(data);
+  try {
+    await setConfigValues(data);
+  } catch (e) {
+    const msg = encodeURIComponent(String(e instanceof Error ? e.message : e).slice(0, 300));
+    redirect(`/admin/textos?error=${msg}`);
+  }
   revalidatePath("/");
   redirect("/admin/textos?ok=1");
 }
