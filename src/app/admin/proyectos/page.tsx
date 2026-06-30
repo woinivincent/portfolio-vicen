@@ -17,7 +17,7 @@ export default async function ProyectosPage({
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
   await requireAuth();
-  const projects = getProjects();
+  const projects = await getProjects();
   const { ok, error } = await searchParams;
 
   return (

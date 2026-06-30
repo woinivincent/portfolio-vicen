@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
   await requireAuth();
-  const projects = getProjects();
+  const projects = await getProjects();
 
   return (
     <>

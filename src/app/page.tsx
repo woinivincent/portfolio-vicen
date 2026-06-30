@@ -12,9 +12,9 @@ function parseJSON<T>(s: string | undefined, fallback: T): T {
   }
 }
 
-export default function Home() {
-  const c = getAllConfig();
-  const projects = getProjects();
+export default async function Home() {
+  const c = await getAllConfig();
+  const projects = await getProjects();
 
   const chips = parseJSON<string[]>(c["hero.chips"], []);
   const cells = parseJSON<{ title: string; text: string }[]>(c["approach.cells"], []);

@@ -19,7 +19,7 @@ export default async function TextosPage({
   searchParams: Promise<{ ok?: string }>;
 }) {
   await requireAuth();
-  const c = getAllConfig();
+  const c = await getAllConfig();
   const { ok } = await searchParams;
 
   const chips = parseJSON<string[]>(c["hero.chips"], []);

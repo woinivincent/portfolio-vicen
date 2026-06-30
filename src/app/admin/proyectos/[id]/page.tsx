@@ -32,7 +32,7 @@ export default async function ProyectoEditor({
   const { ok, error } = await searchParams;
   const isNew = id === "nuevo";
 
-  const project = isNew ? undefined : getProject(id);
+  const project = isNew ? undefined : await getProject(id);
   if (!isNew && !project) notFound();
 
   const statuses: { value: string; label: string }[] = [

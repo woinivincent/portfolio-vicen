@@ -1,63 +1,17 @@
+import "server-only";
 import path from "path";
-import type BetterSQLite3 from "better-sqlite3";
 
-// En Lambda (Netlify/AWS), process.cwd() es read-only; /tmp es el único directorio
-// escribible. En desarrollo usamos un archivo local en la raíz del proyecto.
-const DB_PATH =
-  process.env.DB_PATH ??
-  (process.env.NODE_ENV === "production"
-    ? "/tmp/portfolio.db"
-    : path.join(process.cwd(), "portfolio.db"));
+// ──────────────────────────────────────────────────────────────────────────────
+// Persistencia del CONTENIDO (proyectos + textos) como un único documento JSON.
+//   • Producción (Netlify): Netlify Blobs  → persistente y compartido entre
+//     instancias. Las ediciones del admin se guardan de verdad.
+//   • Desarrollo local: archivo portfolio-data.json en la raíz del proyecto.
+// Las imágenes se guardan aparte (ver src/lib/images.ts) en otro store de Blobs.
+// ──────────────────────────────────────────────────────────────────────────────
 
-type DBInstance = BetterSQLite3.Database;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __portfolioDB: DBInstance | null | undefined;
-}
-
-// Devuelve la instancia de DB, o null si el módulo nativo no pudo cargarse.
-// Si la DB no está disponible (p. ej. cold start raro), el sitio cae a SEED.
-function getDB(): DBInstance | null {
-  if (typeof globalThis.__portfolioDB !== "undefined") {
-    return globalThis.__portfolioDB ?? null;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require("better-sqlite3") as new (p: string) => DBInstance;
-    const db = new Database(DB_PATH);
-    initSchema(db);
-    seedIfEmpty(db);
-    globalThis.__portfolioDB = db;
-  } catch (e) {
-    console.error("[db] SQLite no disponible, usando datos de ejemplo:", String(e));
-    globalThis.__portfolioDB = null;
-  }
-  return globalThis.__portfolioDB ?? null;
-}
-
-function initSchema(db: DBInstance) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id          TEXT PRIMARY KEY,
-      titulo      TEXT NOT NULL,
-      role        TEXT NOT NULL DEFAULT '',
-      status      TEXT NOT NULL DEFAULT 'done',
-      statusLabel TEXT NOT NULL DEFAULT 'Entregado',
-      problem     TEXT NOT NULL DEFAULT '',
-      features    TEXT NOT NULL DEFAULT '[]',
-      stack       TEXT NOT NULL DEFAULT '[]',
-      linkUrl     TEXT NOT NULL DEFAULT '',
-      linkLabel   TEXT NOT NULL DEFAULT '',
-      orden       INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS config (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
-}
+const BLOB_STORE = "site-data";
+const BLOB_KEY = "content";
+const LOCAL_FILE = path.join(process.cwd(), "portfolio-data.json");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,187 +28,152 @@ export interface Project {
   stack: string[];
   linkUrl: string;
   linkLabel: string;
-  orden: number;
 }
 
-type ProjectRow = Omit<Project, "features" | "stack"> & {
-  features: string;
-  stack: string;
-};
+export interface ContentData {
+  projects: Project[];
+  config: Record<string, string>;
+}
 
-function rowToProject(r: ProjectRow): Project {
+// ─── Backend (Blobs en prod / archivo local en dev) ─────────────────────────────
+
+async function readRaw(): Promise<ContentData | null> {
+  try {
+    if (process.env.NETLIFY) {
+      const { getStore } = await import("@netlify/blobs");
+      const store = getStore(BLOB_STORE);
+      const json = await store.get(BLOB_KEY, { type: "json" });
+      return (json as ContentData) ?? null;
+    }
+    const { readFile } = await import("fs/promises");
+    const txt = await readFile(LOCAL_FILE, "utf8");
+    return JSON.parse(txt) as ContentData;
+  } catch {
+    return null;
+  }
+}
+
+async function writeRaw(data: ContentData): Promise<void> {
+  if (process.env.NETLIFY) {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore(BLOB_STORE);
+    await store.setJSON(BLOB_KEY, data);
+    return;
+  }
+  const { writeFile } = await import("fs/promises");
+  await writeFile(LOCAL_FILE, JSON.stringify(data, null, 2), "utf8");
+}
+
+function normalizeProject(p: Partial<Project>): Project {
   return {
-    ...r,
-    status: r.status as ProjectStatus,
-    features: safeParseArray(r.features),
-    stack: safeParseArray(r.stack),
+    id: String(p.id ?? ""),
+    titulo: String(p.titulo ?? ""),
+    role: String(p.role ?? ""),
+    status: (["live", "prod", "done"].includes(p.status as string)
+      ? p.status
+      : "done") as ProjectStatus,
+    statusLabel: String(p.statusLabel ?? "Entregado"),
+    problem: String(p.problem ?? ""),
+    features: Array.isArray(p.features) ? p.features.map(String) : [],
+    stack: Array.isArray(p.stack) ? p.stack.map(String) : [],
+    linkUrl: String(p.linkUrl ?? ""),
+    linkLabel: String(p.linkLabel ?? ""),
   };
 }
 
-function safeParseArray(s: string): string[] {
-  try {
-    const v = JSON.parse(s);
-    return Array.isArray(v) ? v.map(String) : [];
-  } catch {
-    return [];
+// Carga el documento; si no existe, lo siembra. Mezcla SEED_CONFIG para que las
+// claves nuevas (tras un deploy) tengan default sin pisar lo editado.
+async function loadData(): Promise<ContentData> {
+  const existing = await readRaw();
+  if (existing && Array.isArray(existing.projects)) {
+    return {
+      projects: existing.projects.map(normalizeProject),
+      config: { ...SEED_CONFIG, ...(existing.config ?? {}) },
+    };
   }
+  const seeded: ContentData = {
+    projects: SEED_PROJECTS.map(normalizeProject),
+    config: { ...SEED_CONFIG },
+  };
+  // Best-effort: si el backend no está disponible (p. ej. durante el build),
+  // igual servimos el seed en memoria sin romper.
+  try {
+    await writeRaw(seeded);
+  } catch {
+    /* ignore */
+  }
+  return seeded;
 }
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 
-export function getProjects(): Project[] {
-  const db = getDB();
-  if (!db) return SEED_PROJECTS;
-  const rows = db
-    .prepare("SELECT * FROM projects ORDER BY orden ASC, titulo ASC")
-    .all() as ProjectRow[];
-  return rows.map(rowToProject);
+export async function getProjects(): Promise<Project[]> {
+  const { projects } = await loadData();
+  return projects;
 }
 
-export function getProject(id: string): Project | undefined {
-  const db = getDB();
-  if (!db) return SEED_PROJECTS.find((p) => p.id === id);
-  const row = db.prepare("SELECT * FROM projects WHERE id=?").get(id) as
-    | ProjectRow
-    | undefined;
-  return row ? rowToProject(row) : undefined;
+export async function getProject(id: string): Promise<Project | undefined> {
+  const { projects } = await loadData();
+  return projects.find((p) => p.id === id);
 }
 
-export function createProject(data: Omit<Project, "id" | "orden"> & { id?: string }): string {
-  const db = getDB();
-  if (!db) throw new Error("Base de datos no disponible");
-  const id = data.id?.trim() || `proj-${Date.now()}`;
-  const maxOrden = (db.prepare("SELECT MAX(orden) as m FROM projects").get() as {
-    m: number | null;
-  }).m;
-  const orden = (maxOrden ?? 0) + 1;
-  db.prepare(
-    `INSERT INTO projects (id,titulo,role,status,statusLabel,problem,features,stack,linkUrl,linkLabel,orden)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-  ).run(
-    id,
-    data.titulo,
-    data.role,
-    data.status,
-    data.statusLabel,
-    data.problem,
-    JSON.stringify(data.features),
-    JSON.stringify(data.stack),
-    data.linkUrl,
-    data.linkLabel,
-    orden
-  );
+export async function createProject(
+  data: Omit<Project, "id"> & { id: string }
+): Promise<string> {
+  const dataDoc = await loadData();
+  const id = data.id;
+  if (dataDoc.projects.some((p) => p.id === id)) {
+    throw new Error("Ya existe un proyecto con ese identificador");
+  }
+  dataDoc.projects.push(normalizeProject({ ...data, id }));
+  await writeRaw(dataDoc);
   return id;
 }
 
-export function updateProject(id: string, data: Omit<Project, "id" | "orden">): void {
-  const db = getDB();
-  if (!db) throw new Error("Base de datos no disponible");
-  db.prepare(
-    `UPDATE projects SET titulo=?,role=?,status=?,statusLabel=?,problem=?,features=?,stack=?,linkUrl=?,linkLabel=? WHERE id=?`
-  ).run(
-    data.titulo,
-    data.role,
-    data.status,
-    data.statusLabel,
-    data.problem,
-    JSON.stringify(data.features),
-    JSON.stringify(data.stack),
-    data.linkUrl,
-    data.linkLabel,
-    id
-  );
+export async function updateProject(
+  id: string,
+  data: Omit<Project, "id">
+): Promise<void> {
+  const dataDoc = await loadData();
+  const idx = dataDoc.projects.findIndex((p) => p.id === id);
+  if (idx === -1) throw new Error("Proyecto no encontrado");
+  dataDoc.projects[idx] = normalizeProject({ ...data, id });
+  await writeRaw(dataDoc);
 }
 
-export function deleteProject(id: string): void {
-  const db = getDB();
-  if (!db) throw new Error("Base de datos no disponible");
-  db.prepare("DELETE FROM projects WHERE id=?").run(id);
+export async function deleteProject(id: string): Promise<void> {
+  const dataDoc = await loadData();
+  dataDoc.projects = dataDoc.projects.filter((p) => p.id !== id);
+  await writeRaw(dataDoc);
 }
 
-export function moveProject(id: string, dir: "up" | "down"): void {
-  const db = getDB();
-  if (!db) throw new Error("Base de datos no disponible");
-  const all = db
-    .prepare("SELECT id, orden FROM projects ORDER BY orden ASC, titulo ASC")
-    .all() as { id: string; orden: number }[];
-  const idx = all.findIndex((p) => p.id === id);
+export async function moveProject(id: string, dir: "up" | "down"): Promise<void> {
+  const dataDoc = await loadData();
+  const idx = dataDoc.projects.findIndex((p) => p.id === id);
   if (idx === -1) return;
   const swap = dir === "up" ? idx - 1 : idx + 1;
-  if (swap < 0 || swap >= all.length) return;
-  const a = all[idx];
-  const b = all[swap];
-  const tx = db.transaction(() => {
-    db.prepare("UPDATE projects SET orden=? WHERE id=?").run(b.orden, a.id);
-    db.prepare("UPDATE projects SET orden=? WHERE id=?").run(a.orden, b.id);
-  });
-  tx();
+  if (swap < 0 || swap >= dataDoc.projects.length) return;
+  const arr = dataDoc.projects;
+  [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
+  await writeRaw(dataDoc);
 }
 
-// ─── Config (textos del sitio) ─────────────────────────────────────────────────
+// ─── Config (textos del sitio) ──────────────────────────────────────────────────
 
-export function getAllConfig(): Record<string, string> {
-  const db = getDB();
-  if (!db) return { ...SEED_CONFIG };
-  const rows = db.prepare("SELECT key, value FROM config").all() as {
-    key: string;
-    value: string;
-  }[];
-  // Mezclamos con SEED para que claves nuevas (tras un deploy) tengan default.
-  return { ...SEED_CONFIG, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+export async function getAllConfig(): Promise<Record<string, string>> {
+  const { config } = await loadData();
+  return config;
 }
 
-export function getConfigValue(key: string): string {
-  return getAllConfig()[key] ?? "";
+export async function getConfigValue(key: string): Promise<string> {
+  const { config } = await loadData();
+  return config[key] ?? "";
 }
 
-export function setConfigValues(data: Record<string, string>): void {
-  const db = getDB();
-  if (!db) throw new Error("Base de datos no disponible");
-  const stmt = db.prepare(
-    "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-  );
-  const tx = db.transaction(() => {
-    for (const [key, value] of Object.entries(data)) stmt.run(key, value);
-  });
-  tx();
-}
-
-// ─── Seed ──────────────────────────────────────────────────────────────────────
-
-function seedIfEmpty(db: DBInstance) {
-  const projCount = (db.prepare("SELECT COUNT(*) as c FROM projects").get() as {
-    c: number;
-  }).c;
-  if (projCount === 0) {
-    const ins = db.prepare(
-      `INSERT INTO projects (id,titulo,role,status,statusLabel,problem,features,stack,linkUrl,linkLabel,orden)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-    );
-    SEED_PROJECTS.forEach((p, i) => {
-      ins.run(
-        p.id,
-        p.titulo,
-        p.role,
-        p.status,
-        p.statusLabel,
-        p.problem,
-        JSON.stringify(p.features),
-        JSON.stringify(p.stack),
-        p.linkUrl,
-        p.linkLabel,
-        i + 1
-      );
-    });
-  }
-
-  const cfgCount = (db.prepare("SELECT COUNT(*) as c FROM config").get() as {
-    c: number;
-  }).c;
-  if (cfgCount === 0) {
-    const ins = db.prepare("INSERT INTO config (key,value) VALUES (?,?)");
-    for (const [key, value] of Object.entries(SEED_CONFIG)) ins.run(key, value);
-  }
+export async function setConfigValues(data: Record<string, string>): Promise<void> {
+  const dataDoc = await loadData();
+  dataDoc.config = { ...dataDoc.config, ...data };
+  await writeRaw(dataDoc);
 }
 
 // ─── Seed data (contenido inicial = portfolio estático original) ────────────────
@@ -277,7 +196,6 @@ const SEED_PROJECTS: Project[] = [
     stack: ["Next.js", "React", "TypeScript", "node:sqlite", "jose · JWT", "bcrypt"],
     linkUrl: "",
     linkLabel: "",
-    orden: 1,
   },
   {
     id: "nasello",
@@ -294,7 +212,6 @@ const SEED_PROJECTS: Project[] = [
     stack: ["Next.js", "Static export", "cPanel"],
     linkUrl: "https://nasellocables.com",
     linkLabel: "nasellocables.com",
-    orden: 2,
   },
   {
     id: "pos",
@@ -312,7 +229,6 @@ const SEED_PROJECTS: Project[] = [
     stack: ["Electron", "React", "TypeScript", "SQLite", "ExcelJS"],
     linkUrl: "",
     linkLabel: "",
-    orden: 3,
   },
   {
     id: "asistente",
@@ -330,7 +246,6 @@ const SEED_PROJECTS: Project[] = [
     stack: ["API de Anthropic", "RAG", "Agentes"],
     linkUrl: "",
     linkLabel: "",
-    orden: 4,
   },
   {
     id: "materiales",
@@ -348,7 +263,6 @@ const SEED_PROJECTS: Project[] = [
     stack: ["React Native", "Context API", "AsyncStorage"],
     linkUrl: "",
     linkLabel: "",
-    orden: 5,
   },
 ];
 

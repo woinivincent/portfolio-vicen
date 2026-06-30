@@ -7,9 +7,10 @@ data-driven sobre SQLite y desplegable en Netlify.
 ## Stack
 
 - **Next.js 15** (App Router) + React 19 + TypeScript
-- **SQLite** (`better-sqlite3`) con fallback automático a datos de ejemplo
-- **Netlify Blobs** para las imágenes en producción
-- Deploy en **Netlify** con `@netlify/plugin-nextjs`
+- **Netlify Blobs** como almacenamiento persistente: el contenido (proyectos +
+  textos) se guarda como un documento JSON, y las imágenes en un store aparte
+- Fallback automático a datos de ejemplo si el backend no está disponible
+- Deploy en **Netlify** con `@netlify/plugin-nextjs` (sin dependencias nativas)
 
 ## Desarrollo local
 
@@ -20,7 +21,8 @@ npm run dev      # http://localhost:3000
 
 - Sitio público: `/`
 - Panel de admin: `/admin` (te pide contraseña)
-- En local la DB es el archivo `portfolio.db` y las imágenes van a `public/images/`.
+- En local el contenido se guarda en `portfolio-data.json` y las imágenes en
+  `public/images/` (ambos ignorados por git). En producción todo va a Netlify Blobs.
 
 ## Acceso al admin
 
@@ -39,13 +41,11 @@ variables). El acceso se guarda en una cookie httpOnly por 7 días.
 2. En Netlify: **Add new site → Import from Git** y elegí el repo.
 3. Netlify detecta `netlify.toml` (build `npm run build`, plugin de Next).
 4. En **Environment variables** agregá `ADMIN_PASSWORD` con tu contraseña.
-5. Deploy. Las imágenes que subas desde el admin se guardan en **Netlify Blobs**
-   (no en el repo) y se sirven vía `/images/<id>.jpg`.
-
-> Nota: la DB SQLite en Netlify vive en `/tmp` (efímera por instancia). El contenido
-> editado persiste mientras la instancia está caliente; los datos base siempre están
-> garantizados por el seed. Para persistencia permanente multi-instancia, migrar a
-> Netlify Blobs/DB o Postgres (ver `src/lib/db.ts`).
+5. Deploy. Tanto el contenido que edites como las imágenes que subas se guardan en
+   **Netlify Blobs** (no en el repo). Las ediciones son **persistentes** y se
+   comparten entre instancias; el sitio lee el documento en cada request, así que
+   los cambios se ven al instante. El seed solo se usa la primera vez (o si el
+   documento se borra).
 
 ## Conectar el dominio vicenw.com
 
@@ -64,7 +64,7 @@ src/
 │  ├─ api/img/[...path]/    # sirve imágenes (Blobs/fs)
 │  └─ admin/                # panel: login, proyectos, textos
 ├─ lib/
-│  ├─ db.ts                 # SQLite + seed + CRUD
+│  ├─ db.ts                 # contenido en Netlify Blobs/JSON + seed + CRUD
 │  ├─ auth.ts               # sesión por cookie
 │  └─ images.ts             # guardar/borrar imágenes
 └─ middleware.ts            # protege /admin

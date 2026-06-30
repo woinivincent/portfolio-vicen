@@ -11,13 +11,11 @@
   "dependencies": {
     "@netlify/blobs": "^10.7.9",
     "@netlify/plugin-nextjs": "^5.15.12",
-    "better-sqlite3": "^12.11.1",
     "next": "^15.5.19",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "22.10.7",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",

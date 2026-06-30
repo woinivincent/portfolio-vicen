@@ -3,7 +3,7 @@ import { getAllConfig } from "@/lib/db";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const c = getAllConfig();
+  const c = await getAllConfig();
   const title = c["site.title"] || "Portfolio";
   const description = c["site.description"] || "";
   return {

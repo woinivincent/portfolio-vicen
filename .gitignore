@@ -33,7 +33,8 @@ next-env.d.ts
 # logs
 *.log
 
-# base de datos local (SQLite)
+# datos de contenido en local (en producción van a Netlify Blobs)
+/portfolio-data.json
 *.db
 *.db-shm
 *.db-wal
