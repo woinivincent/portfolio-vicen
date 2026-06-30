@@ -1,5 +1,6 @@
 import "server-only";
 import path from "path";
+import { USE_BLOBS } from "./runtime";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Persistencia del CONTENIDO (proyectos + textos) como un único documento JSON.
@@ -39,7 +40,7 @@ export interface ContentData {
 
 async function readRaw(): Promise<ContentData | null> {
   try {
-    if (process.env.NETLIFY) {
+    if (USE_BLOBS) {
       const { getStore } = await import("@netlify/blobs");
       const store = getStore(BLOB_STORE);
       const json = await store.get(BLOB_KEY, { type: "json" });
@@ -54,7 +55,7 @@ async function readRaw(): Promise<ContentData | null> {
 }
 
 async function writeRaw(data: ContentData): Promise<void> {
-  if (process.env.NETLIFY) {
+  if (USE_BLOBS) {
     const { getStore } = await import("@netlify/blobs");
     const store = getStore(BLOB_STORE);
     await store.setJSON(BLOB_KEY, data);

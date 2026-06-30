@@ -1,4 +1,5 @@
 import "server-only";
+import { USE_BLOBS } from "./runtime";
 
 // Guarda una imagen bajo un "slot" (= id del proyecto). En Netlify va a Blobs;
 // en local va a public/images/<slot>.jpg. La lectura la hace /api/img.
@@ -9,7 +10,7 @@ export async function saveImage(slot: string, file: File): Promise<void> {
 
   const bytes = await file.arrayBuffer();
 
-  if (process.env.NETLIFY) {
+  if (USE_BLOBS) {
     const { getStore } = await import("@netlify/blobs");
     const store = getStore("site-images");
     await store.set(slot, bytes, { metadata: { contentType: file.type } });
@@ -24,7 +25,7 @@ export async function saveImage(slot: string, file: File): Promise<void> {
 }
 
 export async function deleteImage(slot: string): Promise<void> {
-  if (process.env.NETLIFY) {
+  if (USE_BLOBS) {
     const { getStore } = await import("@netlify/blobs");
     const store = getStore("site-images");
     await store.delete(slot).catch(() => {});

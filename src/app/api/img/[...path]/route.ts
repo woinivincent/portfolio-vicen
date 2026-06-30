@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { USE_BLOBS } from "@/lib/runtime";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function GET(
   const filename = segments.join("/");
   const slot = filename.replace(/\.[^.]+$/, ""); // quita la extensión
 
-  if (process.env.NETLIFY) {
+  if (USE_BLOBS) {
     const { getStore } = await import("@netlify/blobs");
     const store = getStore("site-images");
     const data = await store.get(slot, { type: "arrayBuffer" });
